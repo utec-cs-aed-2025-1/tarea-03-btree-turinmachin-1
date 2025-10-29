@@ -1,30 +1,56 @@
 #ifndef NODE_H
 #define NODE_H
 
-using namespace std;
+#include <cstddef>
+#include <utility>
 
-template <typename TK>
+template<typename TK>
 struct Node {
-  // array de keys
-  TK* keys;
-  // array de punteros a hijos
-  Node** children;
-  // cantidad de keys
-  int count;
-  // indicador de nodo hoja
-  bool leaf;
+    TK* keys = nullptr;
+    Node** children = nullptr;
+    std::size_t count = 0;
+    bool leaf = true;
 
-  Node() : keys(nullptr), children(nullptr), count(0) {}
-  Node(int M) {
-    keys = new TK[M - 1];
-    children = new Node<TK>*[M];
-    count = 0;
-    leaf = true;
-  }
+    Node()
+        : keys(nullptr),
+          children(nullptr) {}
 
-  void killSelf() {
-    // TODO
-  }
+    Node(const Node&) = delete;
+
+    Node(Node&& other) noexcept {
+        std::swap(keys, other.keys);
+        std::swap(children, other.children);
+        std::swap(count, other.count);
+        std::swap(leaf, other.leaf);
+    }
+
+    Node& operator=(const Node&) = delete;
+
+    Node& operator=(Node&& other) noexcept {
+        std::swap(keys, other.keys);
+        std::swap(children, other.children);
+        std::swap(count, other.count);
+        std::swap(leaf, other.leaf);
+    }
+
+    explicit Node(const std::size_t M)
+        : keys(new TK[M - 1]),
+          children(new Node<TK>*[M]) {}
+
+    // Este destructor ejecuta cuando se elimina un nodo. Por conveniencia, solo limpia sus propios
+    // recursos y no a sus children
+    ~Node() {
+        delete[] keys;
+        delete[] children;
+    }
+
+    // Este método es como el destructor pero también limpia a los children recursivamente
+    void killSelf() {
+        for (std::size_t i = 0; i < count + 1; ++i)
+            children[i]->killSelf();
+
+        delete this;
+    }
 };
 
 #endif
