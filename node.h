@@ -6,14 +6,12 @@
 
 template<typename TK>
 struct Node {
-    TK* keys = nullptr;
-    Node** children = nullptr;
+    TK* keys;
+    Node** children;
     std::size_t count = 0;
     bool leaf = true;
 
-    Node()
-        : keys(nullptr),
-          children(nullptr) {}
+    Node() = delete;
 
     Node(const Node&) = delete;
 
@@ -35,7 +33,7 @@ struct Node {
 
     explicit Node(const std::size_t M)
         : keys(new TK[M - 1]),
-          children(new Node<TK>*[M]) {}
+          children(new Node*[M]) {}
 
     // Este destructor ejecuta cuando se elimina un nodo. Por conveniencia, solo limpia sus propios
     // recursos y no a sus children

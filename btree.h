@@ -3,9 +3,11 @@
 
 #include <cmath>
 #include <cstddef>
-#include <iostream>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 #include "node.h"
 
@@ -22,19 +24,22 @@ class BTree {
         const BNode* cur = node;
 
         while (cur != nullptr) {
-            cur = cur->children[0];
             ++height;
+            cur = cur->children[0];
         }
 
         return height;
     }
 
     bool check_properties(const BNode* const node) const {
-        const std::size_t min_keys = node == root ? 1 : std::ceil(M / 2.0) - 1;
-        const std::size_t max_keys = M - 1;
+        if (node == nullptr)
+            return true;
+
+        const std::size_t min_entries = node == root ? 1 : std::ceil(M / 2.0) - 1;
+        const std::size_t max_entries = M - 1;
 
         // Check entry count
-        if (node->count < min_keys || node->count > max_keys)
+        if (node->count < min_entries || node->count > max_entries)
             return false;
 
         // Keys must be ordered
@@ -70,16 +75,16 @@ class BTree {
             if (maxKey(node->children[0]) >= node->keys[0])
                 return false;
 
-            // Rightmost subtree should be greater than last key
-            if (minKey(node->children[node->count]) >= node->keys[node->count - 1])
+            // Last key should be less than rightmost subtree
+            if (node->keys[node->count - 1] >= minKey(node->children[node->count]))
                 return false;
 
-            // Check that subtrees go inside the correct keys
+            // Check that subtrees go inside the correct entries
             for (std::size_t i = 1; i < node->count; ++i) {
                 const TK& min = minKey(node->children[i]);
                 const TK& max = maxKey(node->children[i]);
 
-                if (node->keys[i - 1] >= min || max >= node->keys[i])
+                if (!node->keys[i - 1] < min || max >= node->keys[i])
                     return false;
             }
 
@@ -100,12 +105,19 @@ class BTree {
 
         std::string result;
 
-        for (int i = 0; i < node->count; i++) {
-            result += toString(node->children[i], sep);
-            result += std::to_string(node->keys[i]) + sep;
+        for (std::size_t i = 0; i < node->count; ++i) {
+            if (!node->leaf)
+                result += toString(node->children[i], sep) + sep;
+
+            result += std::to_string(node->keys[i]);
+
+            if (i < node->count - 1)
+                result += sep;
         }
 
-        result += toString(node->children[node->count], sep);
+        if (!node->leaf)
+            result += sep + toString(node->children[node->count], sep);
+
         return result;
     }
 
@@ -147,6 +159,103 @@ class BTree {
         return cur->keys[cur->count - 1];
     }
 
+    // Returns:
+    // - bool if the result didn't split. Indicates "inserted".
+    // - (TK, Node*) if there was a split (implies inserted = true)
+    std::variant<bool, std::pair<TK, BNode*>> insert(BNode* const node, TK key) {
+        // Los comentarios en esta función son prueba de mi travesía intentando insertar en un
+        // BTree...
+        //
+        // (programar pensando en inglés es peak)
+
+        if (node == nullptr)
+            // We went past a leaf. Gotta insert back up...
+            return std::pair{key, nullptr};
+
+        std::size_t i = 0;
+        while (i < node->count && node->keys[i] < key)
+            ++i;
+
+        if (i < node->count && node->keys[i] == key) {
+            // Key already exists
+            return false;
+        }
+
+        // Insert between the correct keys
+        auto result = insert(node->children[i], std::move(key));
+
+        if (std::holds_alternative<bool>(result))
+            return result;  // Nothing to propagate, we're done here.
+
+        // Well, we got a split.
+        auto& [new_key, new_child] = std::get<std::pair<TK, BNode*>>(result);
+
+        // Got space left?
+        if (node->count < M - 1) {
+            // Got space left.
+            node->children[node->count + 1] = node->children[node->count];
+
+            for (std::size_t j = node->count; j > i; --j) {
+                node->keys[j] = std::move(node->keys[j - 1]);
+                node->children[j] = node->children[j - 1];
+            }
+
+            node->keys[i] = std::move(new_key);
+            node->children[i] = new_child;
+            ++node->count;
+
+            return true;
+        }
+
+        // Don't got space left.
+
+        // Move keys to temporary "overflowed" list
+        TK keys_tmp[M];
+        BNode* children_tmp[M + 1];
+        std::size_t e = 0;
+        bool new_key_pending = true;
+
+        for (std::size_t j = 0; j < M; ++j) {
+            if (new_key_pending && (e >= node->count || new_key < node->keys[e])) {
+                keys_tmp[j] = std::move(new_key);
+                children_tmp[j] = new_child;
+                new_key_pending = false;
+            } else {
+                keys_tmp[j] = std::move(node->keys[e]);
+                children_tmp[j] = std::exchange(node->children[e], nullptr);
+                ++e;
+            }
+        }
+
+        children_tmp[M] = std::exchange(node->children[M - 1], nullptr);
+
+        const std::size_t mid = (M - 1) / 2;
+        const TK lifted = std::move(keys_tmp[mid]);
+
+        auto* const left_split = new BNode(M);
+        left_split->leaf = node->leaf;
+
+        // Split sizes (if split is uneven, left is 1 key smaller)
+        left_split->count = mid;
+        node->count = M - 1 - mid;
+
+        for (std::size_t i = 0; i < left_split->count; ++i) {
+            left_split->keys[i] = std::move(keys_tmp[i]);
+            left_split->children[i] = children_tmp[i];
+        }
+
+        left_split->children[left_split->count] = children_tmp[mid];
+
+        for (std::size_t i = 0; i < node->count; ++i) {
+            node->keys[i] = std::move(keys_tmp[mid + 1 + i]);
+            node->children[i] = children_tmp[mid + 1 + i];
+        }
+
+        node->children[node->count] = children_tmp[M];
+
+        return std::pair{lifted, left_split};
+    }
+
     void swap(BTree& other) noexcept {
         std::swap(root, other.root);
         std::swap(n, other.n);
@@ -174,13 +283,37 @@ public:
     }
 
     ~BTree() {
-        root->killSelf();
-        root = nullptr;
+        // if (root != nullptr) {
+        //     root->killSelf();
+        //     root = nullptr;
+        // }
+
         n = 0;
     }
 
     void insert(TK key) {
-        // TODO: implement
+        const auto result = insert(root, key);
+
+        if (const bool* const inserted = std::get_if<bool>(&result)) {
+            if (*inserted)
+                ++n;
+            return;
+        }
+
+        auto [new_key, new_child] = std::get<std::pair<TK, BNode*>>(result);
+
+        auto* const new_root = new BNode(M);
+        new_root->leaf = new_child == nullptr;
+
+        new_root->keys[0] = std::move(new_key);
+        new_root->count = 1;
+
+        new_root->children[0] = new_child;
+        new_root->children[1] = root;
+
+        root = new_root;
+
+        ++n;
     }
 
     void remove(const TK& key) {
@@ -224,15 +357,15 @@ public:
     }
 
     static BTree* build_from_ordered_vector(const std::vector<TK>& elements, const std::size_t M) {
-        auto* const result = new BTree(M);
-        // TODO: implement
+        auto* result = new BTree(M);
+
+        for (const auto& el : elements)
+            result->insert(el);
+
         return result;
     }
 
     [[nodiscard]] bool check_properties() const {
-        if (root == nullptr)
-            return true;
-
         return check_properties(root);
     }
 };
