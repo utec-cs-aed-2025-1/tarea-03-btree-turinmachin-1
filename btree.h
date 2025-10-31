@@ -19,8 +19,12 @@ class BTree {
     BNode* root = nullptr;
     std::size_t n = 0;
 
-    static std::size_t height(const BNode* const node) {
-        std::size_t height = 0;
+    // NOTE: los tests parecen usar una convención inconsistente de height (?)
+    static std::ptrdiff_t height(const BNode* const node) {
+        if (node == nullptr)
+            return 0;
+
+        std::size_t height = -1;
         const BNode* cur = node;
 
         while (cur != nullptr) {
@@ -169,17 +173,14 @@ class BTree {
         // (programar pensando en inglés es peak)
 
         if (node == nullptr)
-            // We went past a leaf. Gotta insert back up...
-            return std::pair{key, nullptr};
+            return std::pair{key, nullptr};  // We went past a leaf. Gotta insert back up...
 
         std::size_t i = 0;
         while (i < node->count && node->keys[i] < key)
             ++i;
 
-        if (i < node->count && node->keys[i] == key) {
-            // Key already exists
-            return false;
-        }
+        if (i < node->count && node->keys[i] == key)
+            return false;  // Key already exists
 
         // Insert between the correct keys
         auto result = insert(node->children[i], std::move(key));
@@ -239,16 +240,16 @@ class BTree {
         lsplit->count = mid;
         node->count = M - 1 - mid;
 
-        for (std::size_t i = 0; i < lsplit->count; ++i) {
-            lsplit->keys[i] = std::move(keys_tmp[i]);
-            lsplit->children[i] = children_tmp[i];
+        for (std::size_t k = 0; k < lsplit->count; ++k) {
+            lsplit->keys[k] = std::move(keys_tmp[k]);
+            lsplit->children[k] = children_tmp[k];
         }
 
         lsplit->children[lsplit->count] = children_tmp[mid];
 
-        for (std::size_t i = 0; i < node->count; ++i) {
-            node->keys[i] = std::move(keys_tmp[mid + 1 + i]);
-            node->children[i] = children_tmp[mid + 1 + i];
+        for (std::size_t k = 0; k < node->count; ++k) {
+            node->keys[k] = std::move(keys_tmp[mid + 1 + k]);
+            node->children[k] = children_tmp[mid + 1 + k];
         }
 
         node->children[node->count] = children_tmp[M];
@@ -319,7 +320,7 @@ public:
         // TODO: implement
     }
 
-    [[nodiscard]] std::size_t height() const {
+    [[nodiscard]] std::ptrdiff_t height() const {
         return height(root);
     }
 
