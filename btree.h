@@ -35,11 +35,11 @@ class BTree {
         if (node == nullptr)
             return true;
 
-        const std::size_t min_entries = node == root ? 1 : std::ceil(M / 2.0) - 1;
-        const std::size_t max_entries = M - 1;
+        const std::size_t min_keys = node == root ? 1 : std::ceil(M / 2.0) - 1;
+        const std::size_t max_keys = M - 1;
 
-        // Check entry count
-        if (node->count < min_entries || node->count > max_entries)
+        // Check key count
+        if (node->count < min_keys || node->count > max_keys)
             return false;
 
         // Keys must be ordered
@@ -79,7 +79,7 @@ class BTree {
             if (node->keys[node->count - 1] >= minKey(node->children[node->count]))
                 return false;
 
-            // Check that subtrees go inside the correct entries
+            // Check that subtrees go inside the correct keys
             for (std::size_t i = 1; i < node->count; ++i) {
                 const TK& min = minKey(node->children[i]);
                 const TK& max = maxKey(node->children[i]);
@@ -232,19 +232,19 @@ class BTree {
         const std::size_t mid = (M - 1) / 2;
         const TK lifted = std::move(keys_tmp[mid]);
 
-        auto* const left_split = new BNode(M);
-        left_split->leaf = node->leaf;
+        auto* const lsplit = new BNode(M);
+        lsplit->leaf = node->leaf;
 
         // Split sizes (if split is uneven, left is 1 key smaller)
-        left_split->count = mid;
+        lsplit->count = mid;
         node->count = M - 1 - mid;
 
-        for (std::size_t i = 0; i < left_split->count; ++i) {
-            left_split->keys[i] = std::move(keys_tmp[i]);
-            left_split->children[i] = children_tmp[i];
+        for (std::size_t i = 0; i < lsplit->count; ++i) {
+            lsplit->keys[i] = std::move(keys_tmp[i]);
+            lsplit->children[i] = children_tmp[i];
         }
 
-        left_split->children[left_split->count] = children_tmp[mid];
+        lsplit->children[lsplit->count] = children_tmp[mid];
 
         for (std::size_t i = 0; i < node->count; ++i) {
             node->keys[i] = std::move(keys_tmp[mid + 1 + i]);
@@ -253,7 +253,7 @@ class BTree {
 
         node->children[node->count] = children_tmp[M];
 
-        return std::pair{lifted, left_split};
+        return std::pair{lifted, lsplit};
     }
 
     void swap(BTree& other) noexcept {
@@ -283,10 +283,10 @@ public:
     }
 
     ~BTree() {
-        // if (root != nullptr) {
-        //     root->killSelf();
-        //     root = nullptr;
-        // }
+        if (root != nullptr) {
+            root->killSelf();
+            root = nullptr;
+        }
 
         n = 0;
     }
@@ -312,7 +312,6 @@ public:
         new_root->children[1] = root;
 
         root = new_root;
-
         ++n;
     }
 

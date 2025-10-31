@@ -15,12 +15,11 @@ struct Node {
 
     Node(const Node&) = delete;
 
-    Node(Node&& other) noexcept {
-        std::swap(keys, other.keys);
-        std::swap(children, other.children);
-        std::swap(count, other.count);
-        std::swap(leaf, other.leaf);
-    }
+    Node(Node&& other) = delete;
+
+    explicit Node(const std::size_t M)
+        : keys(new TK[M - 1]),
+          children(new Node*[M]) {}
 
     Node& operator=(const Node&) = delete;
 
@@ -29,11 +28,8 @@ struct Node {
         std::swap(children, other.children);
         std::swap(count, other.count);
         std::swap(leaf, other.leaf);
+        return *this;
     }
-
-    explicit Node(const std::size_t M)
-        : keys(new TK[M - 1]),
-          children(new Node*[M]) {}
 
     // Este destructor ejecuta cuando se elimina un nodo. Por conveniencia, solo limpia sus propios
     // recursos y no a sus children
@@ -45,7 +41,8 @@ struct Node {
     // Este método es como el destructor pero también limpia a los children recursivamente
     void killSelf() {
         for (std::size_t i = 0; i < count + 1; ++i)
-            children[i]->killSelf();
+            if (children[i] != nullptr)
+                children[i]->killSelf();
 
         delete this;
     }
