@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -71,23 +72,14 @@ class BTree {
                     return false;
             }
 
-            // Leftmost subtree should be less than first key
-            if (maxKey(node->children[0]) >= node->keys[0])
-                return false;
-
-            // Last key should be less than rightmost subtree
-            if (node->keys[node->count - 1] >= minKey(node->children[node->count]))
-                return false;
-
             // Check that subtrees go inside the correct keys
-            for (std::size_t i = 1; i < node->count; ++i) {
-                const TK& min = minKey(node->children[i]);
-                const TK& max = maxKey(node->children[i]);
+            for (std::size_t i = 0; i < node->count; ++i) {
+                const TK& min = maxKey(node->children[i]);
+                const TK& max = minKey(node->children[i + 1]);
 
-                if (!node->keys[i - 1] < min || max >= node->keys[i])
+                if (node->keys[i] < min || node->keys[i] >= max)
                     return false;
             }
-
         } else {
             // Leaf nodes should have no children
             for (std::size_t i = 0; i < node->count + 1; ++i) {
