@@ -54,7 +54,10 @@ int main() {
   
   btree->clear();  
   ASSERT(btree->size() == 0, "The function size is not working");
-  ASSERT(btree->height() == 0, "The function height is not working");
+  // NOTE: Se cambió aquí la comparación para que compare con -1 en lugar de 0. Las convenciones
+  // de height() de los otros test cases implican que height(árbol vacío) = -1 y
+  // height(árbol con solo root) = 0.
+  ASSERT(btree->height() == -1, "The function height is not working");
 
   // TODO: agregar pruebas 
   std::vector<int> elements = {1,2,3,4,5,6,7,8,9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
