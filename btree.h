@@ -19,12 +19,8 @@ class BTree {
     BNode* root = nullptr;
     std::size_t n = 0;
 
-    // NOTE: los tests parecen usar una convención inconsistente de height (?)
     static std::ptrdiff_t height(const BNode* const node) {
-        if (node == nullptr)
-            return 0;
-
-        std::size_t height = -1;
+        std::ptrdiff_t height = -1;
         const BNode* cur = node;
 
         while (cur != nullptr) {
