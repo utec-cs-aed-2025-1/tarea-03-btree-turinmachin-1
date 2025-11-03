@@ -7,6 +7,10 @@
 2. Joaquin Adrian Lopez del Carpio
 3. José Daniel Grayson Tejada
 
+Screenshot de los casos de prueba (por si acaso):
+
+![screenshot](https://github.com/utec-cs-aed-2025-1/tarea-03-btree-turinmachin-1/blob/main/screenshot.png?raw=true)
+
 # B Tree
 
 - Implementar todos los métodos del árbol B cumpliendo las complejidades algoritmicas vistas en clase.
