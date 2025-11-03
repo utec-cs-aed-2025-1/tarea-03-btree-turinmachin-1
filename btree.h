@@ -559,10 +559,12 @@ public:
                 while (pos <= parent->count && parent->children[pos] != node)
                     ++pos;
 
-                std::move_backward(parent->keys + pos, parent->keys + parent->count,
-                                   parent->keys + parent->count + 1);
-                std::move_backward(parent->children + pos + 1, parent->children + parent->count + 1,
-                                   parent->children + parent->count + 2);
+                for (std::size_t i = parent->count - 1; i >= pos; --i) {
+                    parent->keys[i + 1] = std::move(parent->keys[i]);
+                }
+                for (std::size_t i = parent->count; i > pos; --i) {
+                    parent->children[i + 1] = std::move(parent->children[i]);
+                }
 
                 parent->keys[pos] = promoted;
                 parent->children[pos + 1] = right;
