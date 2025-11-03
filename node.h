@@ -18,8 +18,8 @@ struct Node {
     Node(Node&& other) = delete;
 
     explicit Node(const std::size_t M)
-        : keys(new TK[M - 1]),
-          children(new Node*[M]) {}
+        : keys(new TK[M - 1]()),
+          children(new Node*[M]()) {}
 
     Node& operator=(const Node&) = delete;
 
