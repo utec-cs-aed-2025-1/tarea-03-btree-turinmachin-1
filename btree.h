@@ -498,13 +498,81 @@ public:
         return n;
     }
 
-    static BTree* build_from_ordered_vector(const std::vector<TK>& elements, const std::size_t M) {
-        auto* result = new BTree(M);
+    static BTree* build_from_ordered_vector(const std::vector<TK>& elements, std::size_t M) {
+        if (M < 3)
+            throw std::invalid_argument("order must be greater than 2");
 
-        for (const auto& el : elements)
-            result->insert(el);
+        auto* tree = new BTree(M);
+        if (elements.empty())
+            return tree;
 
-        return result;
+        auto* root = new BNode(M);
+        tree->root = root;
+
+        std::vector<BNode*> path{root};
+        for (TK elem : elements) {
+            while (!path.back()->leaf) {
+                BNode* cur = path.back();
+                BNode*& child = cur->children[cur->count];
+                if (child == nullptr)
+                    child = new BNode(M);
+                path.push_back(child);
+            }
+
+            BNode* leaf = path.back();
+            leaf->keys[leaf->count++] = elem;
+            ++tree->n;
+
+            for (int i = static_cast<int>(path.size()) - 1; i >= 0; --i) {
+                BNode* node = path[i];
+                if (node->count < M - 1)
+                    break;
+
+                std::size_t mid = (M - 1) / 2;
+                TK promoted = node->keys[mid];
+
+                auto* right = new BNode(M);
+                right->leaf = node->leaf;
+                right->count = node->count - mid - 1;
+
+                std::copy(node->keys + mid + 1, node->keys + node->count, right->keys);
+                if (!node->leaf)
+                    std::copy(node->children + mid + 1, node->children + node->count + 1,
+                              right->children);
+
+                node->count = mid;
+
+                if (i == 0) {
+                    auto* newRoot = new BNode(M);
+                    newRoot->leaf = false;
+                    newRoot->count = 1;
+                    newRoot->keys[0] = promoted;
+                    newRoot->children[0] = node;
+                    newRoot->children[1] = right;
+                    tree->root = newRoot;
+                    path = {newRoot};
+                    break;
+                }
+
+                BNode* parent = path[i - 1];
+                std::size_t pos = 0;
+                while (pos <= parent->count && parent->children[pos] != node)
+                    ++pos;
+
+                std::move_backward(parent->keys + pos, parent->keys + parent->count,
+                                   parent->keys + parent->count + 1);
+                std::move_backward(parent->children + pos + 1, parent->children + parent->count + 1,
+                                   parent->children + parent->count + 2);
+
+                parent->keys[pos] = promoted;
+                parent->children[pos + 1] = right;
+                ++parent->count;
+            }
+
+            path.resize(1);
+        }
+
+        return tree;
     }
 
     [[nodiscard]] bool check_properties() const {
