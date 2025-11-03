@@ -386,6 +386,20 @@ public:
     explicit BTree(const std::size_t M)
         : M(M) {}
 
+    BTree(const BTree& other) = delete;
+
+    BTree(BTree&& other) noexcept
+        : M(other.M) {
+        swap(other);
+    }
+
+    BTree& operator=(const BTree& other) = delete;
+
+    BTree& operator=(BTree&& other) noexcept {
+        swap(other);
+        return *this;
+    }
+
     [[nodiscard]] bool search(TK key) const {
         const BNode* cur = root;
 
