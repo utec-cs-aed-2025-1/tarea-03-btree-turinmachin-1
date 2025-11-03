@@ -8,6 +8,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -33,63 +34,71 @@ class BTree {
         return height;
     }
 
-    bool check_properties(const BNode* const node) const {
+    // El retorno es (valid, height, min_key, max_key)
+    // Cuando valid = false, el resto de valores se ignoran, así que les asignamos -1s y nullptrs.
+    std::tuple<bool, std::ptrdiff_t, const TK*, const TK*> check_properties(
+        const BNode* const node) const {
         if (node == nullptr)
-            return true;
+            return {true, -1, nullptr, nullptr};
 
         const std::size_t min_keys = node == root ? 1 : std::ceil(M / 2.0) - 1;
         const std::size_t max_keys = M - 1;
 
         // Check key count
         if (node->count < min_keys || node->count > max_keys)
-            return false;
+            return {false, -1, nullptr, nullptr};
 
         // Keys must be ordered
         for (std::size_t i = 0; i < node->count - 1; ++i) {
             if (node->keys[i] >= node->keys[i + 1])
-                return false;
+                return {false, -1, nullptr, nullptr};
         }
 
         if (!node->leaf) {
             // Non-leaf nodes must have count + 1 children
             for (std::size_t i = 0; i < node->count + 1; ++i) {
                 if (node->children[i] == nullptr)
-                    return false;
+                    return {false, -1, nullptr, nullptr};
             }
+
+            std::ptrdiff_t heights[node->count + 1];
+            const TK* mins[node->count + 1];
+            const TK* maxs[node->count + 1];
 
             // Check properties recursively
             for (std::size_t i = 0; i < node->count + 1; ++i) {
-                if (!check_properties(node->children[i]))
-                    return false;
-            }
+                const auto [result, sub_height, min_key, max_key] =
+                    check_properties(node->children[i]);
+                if (!result)
+                    return {false, -1, nullptr, nullptr};
 
-            const std::size_t expected_height = height(node->children[0]);
+                heights[i] = sub_height;
+                mins[i] = min_key;
+                maxs[i] = max_key;
+            }
 
             // Subtree heights should be equal
             for (std::size_t i = 1; i < node->count + 1; ++i) {
-                // NOTE: esta llamada es costosa. Podría aplicarse un caché o algo parecido, pero no
-                // estamos considerando mucho el costo de check_properties.
-                if (height(node->children[i]) != expected_height)
-                    return false;
+                if (heights[i] != heights[0])
+                    return {false, -1, nullptr, nullptr};
             }
 
             // Check that subtrees go inside the correct keys
             for (std::size_t i = 0; i < node->count; ++i) {
-                const TK& min = maxKey(node->children[i]);
-                const TK& max = minKey(node->children[i + 1]);
+                if (node->keys[i] < *maxs[i] || node->keys[i] >= *mins[i + 1])
+                    return {false, -1, nullptr, nullptr};
+            }
 
-                if (node->keys[i] < min || node->keys[i] >= max)
-                    return false;
-            }
-        } else {
-            // Leaf nodes should have no children
-            for (std::size_t i = 0; i < node->count + 1; ++i) {
-                if (node->children[i] != nullptr)
-                    return false;
-            }
+            return {true, heights[0], mins[0], maxs[node->count - 1]};
         }
 
-        return true;
+        // Leaf nodes should have no children
+        for (std::size_t i = 0; i < node->count + 1; ++i) {
+            if (node->children[i] != nullptr)
+                return {false, -1, nullptr, nullptr};
+        }
+
+        return {true, 0, &node->keys[0], &node->keys[node->count - 1]};
     }
 
     static std::string toString(BNode* node, const std::string& sep = ",") {
@@ -651,7 +660,8 @@ public:
     // }
 
     [[nodiscard]] bool check_properties() const {
-        return check_properties(root);
+        const auto [result, height, min, max] = check_properties(root);
+        return result;
     }
 };
 
