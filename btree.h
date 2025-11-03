@@ -246,6 +246,23 @@ class BTree {
         return std::pair{lifted, lsplit};
     }
 
+    // static void prune_duplicates(BNode* node) {
+    //     if (node == nullptr || node->leaf)
+    //         return;
+    //
+    //     for (std::size_t i = 0; i <= node->count; ++i) {
+    //         prune_duplicates(node->children[i]);
+    //     }
+    //
+    //     for (std::size_t i = 0; i < node->count; ++i) {
+    //         BNode* child = node->children[i];
+    //         TK sep = node->keys[i];
+    //
+    //         if (child->count > 0 && child->keys[child->count - 1] == sep)
+    //             --child->count;
+    //     }
+    // }
+
     void swap(BTree& other) noexcept {
         std::swap(root, other.root);
         std::swap(n, other.n);
@@ -576,6 +593,62 @@ public:
 
         return tree;
     }
+
+    // RIP :c
+    // se intentó implementar el algoritmo <<bulk loading>> mencionado en la página de wikipedia del
+    // b-tree https://en.wikipedia.org/wiki/B-tree#Initial_construction pero los resultados no
+    // fueron satisfactorios, este algoritmo es propio de los b+tree
+    //
+    // static BTree* build_from_ordered_vector(const std::vector<TK>& elements, const std::size_t M)
+    // {
+    //     if (M < 3)
+    //         throw std::invalid_argument("order must be greater than 2");
+    //     if (elements.empty())
+    //         return new BTree(M);
+    //
+    //     auto* tree = new BTree(M);
+    //     std::size_t B = M - 1;
+    //
+    //     std::vector<BNode*> nodes;
+    //     for (std::size_t i = 0; i < elements.size(); i += B) {
+    //         auto* node = new BNode(M);
+    //
+    //         std::size_t idx = 0;
+    //         std::size_t end = std::min(i + B, elements.size());
+    //         for (std::size_t j = i; j < end; ++j) {
+    //             node->keys[idx++] = elements[j];
+    //             ++node->count;
+    //         }
+    //         nodes.push_back(std::move(node));
+    //     }
+    //
+    //     while (nodes.size() > 1) {
+    //         std::vector<BNode*> next;
+    //         for (std::size_t i = 0; i < nodes.size(); i += M) {
+    //             auto* parent = new BNode(M);
+    //             parent->leaf = false;
+    //
+    //             const std::size_t end = std::min(i + M, nodes.size());
+    //             const std::size_t childCount = end - i;
+    //
+    //             for (std::size_t j = 0; j < childCount; ++j)
+    //                 parent->children[j] = nodes[i + j];
+    //
+    //             parent->count = childCount - 1;
+    //             for (std::size_t j = 0; j < parent->count; ++j) {
+    //                 parent->keys[j] = nodes[i + j]->keys[nodes[i + j]->count - 1];
+    //             }
+    //
+    //             next.push_back(std::move(parent));
+    //         }
+    //
+    //         nodes = std::move(next);
+    //     }
+    //
+    //     tree->root = nodes.front();
+    //     prune_duplicates(tree->root);
+    //     return tree;
+    // }
 
     [[nodiscard]] bool check_properties() const {
         return check_properties(root);
