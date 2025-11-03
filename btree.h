@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
@@ -10,7 +11,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <stack>
 #include "node.h"
 
 template<typename TK>
@@ -122,7 +122,7 @@ class BTree {
             return;
 
         for (std::size_t i = 0; i < node->count; ++i) {
-            auto& key = node->keys[i];
+            const TK& key = node->keys[i];
 
             if (begin < key)
                 rangeSearch(node->children[i], out, begin, end);
@@ -252,9 +252,134 @@ class BTree {
         std::swap(M, other.M);
     }
 
-    void remove(const TK& key, BNode* node) {
-        
-        
+    static void merge_children(BNode* const node, const std::size_t i) {
+        BNode* const left = node->children[i];
+        BNode* const right = node->children[i + 1];
+
+        left->keys[left->count] = std::move(node->keys[i]);
+
+        for (std::size_t k = 0; k < right->count; ++k) {
+            left->keys[left->count + 1 + k] = std::move(right->keys[k]);
+            left->children[left->count + 1 + k] = std::exchange(right->children[k], nullptr);
+        }
+
+        left->children[left->count + 1 + right->count] =
+            std::exchange(right->children[right->count], nullptr);
+
+        left->count += 1 + right->count;
+
+        delete std::exchange(node->children[i + 1], node->children[i]);
+
+        for (std::size_t k = i; k < node->count - 1; ++k) {
+            node->keys[k] = std::move(node->keys[k + 1]);
+            node->children[k] = std::exchange(node->children[k + 1], nullptr);
+        }
+
+        node->children[node->count - 1] = std::exchange(node->children[node->count], nullptr);
+
+        --node->count;
+    }
+
+    enum class DeleteResult : std::uint8_t {
+        NotDeleted,
+        JustDeleted,
+        Deleted,
+    };
+
+    DeleteResult remove(BNode* node, const TK& key) {
+        if (node == nullptr)
+            return DeleteResult::NotDeleted;
+
+        std::size_t i = 0;
+        while (i < node->count && node->keys[i] < key)
+            ++i;
+
+        const bool found_key = i < node->count && node->keys[i] == key;
+
+        if (found_key && node->leaf) {
+            // Found the key!
+            for (std::size_t k = i; k < node->count - 1; ++k)
+                node->keys[k] = std::move(node->keys[k + 1]);
+
+            --node->count;
+            return DeleteResult::JustDeleted;
+        }
+
+        DeleteResult result{};
+
+        if (found_key) {
+            const TK& succ = minKey(node->children[i + 1]);
+            node->keys[i] = succ;
+            result = remove(node->children[i + 1], succ);
+        } else {
+            result = remove(node->children[i], key);
+        }
+
+        if (result != DeleteResult::JustDeleted)
+            return result;
+
+        // Only here we might need to fix properties.
+        // (This is the actually hard part)
+
+        const std::size_t MIN_KEYS = std::ceil(M / 2.0) - 1;
+
+        BNode* const mid = node->children[i];
+
+        if (mid->count >= MIN_KEYS)
+            return result;
+
+        // We gotta fix node->children[i]
+
+        if (i > 0 && node->children[i - 1]->count > MIN_KEYS) {
+            // Borrow from left
+            BNode* const left = node->children[i - 1];
+
+            mid->children[mid->count + 1] = std::exchange(mid->children[mid->count], nullptr);
+
+            for (std::size_t k = mid->count; k > 0; ++k) {
+                mid->keys[k] = std::move(mid->keys[k - 1]);
+                mid->children[k] = std::exchange(mid->children[k - 1], nullptr);
+            }
+
+            mid->keys[0] = std::move(node->keys[i - 1]);
+            mid->children[0] = std::exchange(left->children[left->count], nullptr);
+            node->keys[i - 1] = std::move(left->keys[left->count - 1]);
+
+            ++mid->count;
+            --left->count;
+
+            return DeleteResult::Deleted;  // We're done.
+        }
+
+        if (i < node->count && node->children[i + 1]->count > MIN_KEYS) {
+            // Borrow from right
+            BNode* const right = node->children[i + 1];
+
+            mid->keys[mid->count] = std::move(node->keys[i]);
+            mid->children[mid->count + 1] = std::exchange(right->children[0], nullptr);
+            node->keys[i] = std::move(right->keys[0]);
+
+            for (std::size_t k = 0; k < right->count - 1; ++k) {
+                right->keys[k] = std::move(right->keys[k + 1]);
+                right->children[k] = std::exchange(right->children[k + 1], nullptr);
+            }
+
+            right->children[right->count - 1] =
+                std::exchange(right->children[right->count], nullptr);
+
+            ++mid->count;
+            --right->count;
+
+            return DeleteResult::Deleted;  // We're done.
+        }
+
+        // No borrow available! We have to merge.
+        if (i < node->count)
+            merge_children(node, i);  // Merge with right
+        else
+            merge_children(node, i - 1);  // Merge with left
+
+        return DeleteResult::JustDeleted;
     }
 
 public:
@@ -311,181 +436,16 @@ public:
     }
 
     void remove(const TK& key) {
+        const DeleteResult result = remove(root, key);
 
-        //Temporal
-        std::cout << this->toString(", ") << std::endl;
+        if (result == DeleteResult::JustDeleted && root->count == 0)
+            delete std::exchange(root, root->children[0]);
 
-        BNode* cur = root;
-        std::stack<BNode*> st;
+        const bool was_deleted =
+            result == DeleteResult::Deleted || result == DeleteResult::JustDeleted;
 
-        while (cur != nullptr) {
-            std::size_t idx = 0;
-            while (idx < cur->count && key > cur->keys[idx]) {
-                idx++;
-            }
-            
-            if (idx < cur->count && key == cur->keys[idx]) {
-                // En este punto ya encontró el elemento a eliminar
-                // cur = el nodo en el que se encuentra el key, idx = la posición en el nodo
-
-                if (!cur->leaf) {
-                    // Primero manejamos el caso "no bonito", en el que el key se encuentra en un nodo interno
-                    // Aqui tenemos que tomar "prestado" del sucesor o el anterior, que siempre es una hoja.
-                    // La elección es arbitraria, pero eligiremos el anterior siempre, para reducir los desplazamientos a la hora de eliminar.
-                    
-                    // Aqui haremos el algoritmo para intercambiar con el predecesor de un nodo INTERNO.
-                    BNode* temp = cur;
-                    cur = cur->children[idx];
-                    while(!cur->leaf) {
-                        st.push(cur);
-                        cur = cur->children[cur->count];
-                    }
-                    std::swap(temp->keys[idx], cur->keys[cur->count - 1]);
-                    idx = cur->count - 1;
-                }
-
-                // Para este punto cur necesariamente es hoja, por lo que eliminamos directamente
-                while (idx < cur->count - 1) {
-                    cur->keys[idx] = std::move(cur->keys[idx + 1]);
-                    ++idx;
-                }
-                --cur->count;
-                --n;
-                
-                // En este punto ya eliminamos, solo queda restaurar el arbol B.
-                const int minKeys = (M - 1) / 2;
-
-                while (!st.empty() && cur->count < minKeys) {
-                    // Esto significa que le faltan elementos a la hoja. Vamos a manejar caso por caso.
-
-                    BNode* parent = st.top();
-                    st.pop();
-
-                    std::size_t pos = 0; // En este caso pos representa el indice del nodo donde se elimino respecto al padre.
-                    while (pos <= parent->count && parent->children[pos] != cur) { ++pos; }
-                    
-                    // Se guardan los hermanos de cur.
-                    BNode* left = (pos > 0) ? parent->children[pos - 1] : nullptr;
-                    BNode* right = (pos < parent->count) ? parent->children[pos + 1] : nullptr;
-
-                    if (left && left->count > minKeys) {
-                        // CASO 1.1: Prestar de vecino izquierda y realizar rotacion
-                        std::cout << "CASO 1.1" << std::endl;
-                        // Primero tomar del padre (nuevo minimo de current) y desplazar todo a la derecha
-                        cur->keys[0] = std::move(parent->keys[pos - 1]);
-                        for (int i = cur->count; i > 0; --i) {
-                            cur->keys[i] = std::move(cur->keys[i - 1]);
-                        }
-
-                        if (!cur->leaf) {
-                            cur->children[0] = std::move(left->children[left->count]);
-                            for (int i = cur->count + 1; i > 0; --i) {
-                                cur->children[i] = std::move(cur->children[i - 1]);
-                            }
-                        }
-                        cur->count++;
-
-                        // Actualizar padre y tomar prestado del hijo izquierda
-                        parent->keys[pos - 1] = std::move(left->keys[left->count - 1]);
-                        
-                        // Hijo izquierdo presto, por lo que pierde un elemento.
-                        left->count--;
-                        break;
-                    } else if (right && right->count > minKeys) {
-                        // CASO 1.2: Prestar de vecino derecho y realizar rotacion
-                        std::cout << "CASO 1.2" << std::endl;
-                        // Primero tomar del padre (nuevo maximo de current) y colocar al final.
-                        cur->keys[cur->count] = parent->keys[pos];
-                        if (!cur->leaf) {
-                            cur->children[cur->count + 1] = std::move(right->children[0]);
-                        }
-                        cur->count++;
-                        
-                        // Padre toma prestado del hijo derecho
-                        parent->keys[pos] = std::move(right->keys[0]);
-
-                        // Actualizar hijo derecho, el cual presto y pierde un elemento. Desplazar todo a la izquierda.
-                        for (std::size_t i = 0; i < right->count - 1; ++i) {
-                            right->keys[i] = std::move(right->keys[i + 1]);
-                        }
-                        if (!right->leaf) {
-                            for (std::size_t i = 0; i < right->count; ++i) {
-                                right->children[i] = std::move(right->children[i + 1]);
-                            }
-                        }
-                        right->count--;
-
-                        break;
-                    } else if (left) {
-                        // Caso 2.1: Merge con left
-                        std::cout << "CASO 2.1" << std::endl;
-                        // Primero bajamos el parent a left.
-                        left->keys[left->count] = parent->keys[pos - 1];
-                        left->count++;
-                        
-                        // Copiamos todo current a left
-                        for (std::size_t i = 0; i < cur->count; ++i) {
-                            left->keys[left->count + i] = cur->keys[i];
-                        }
-                        if (!cur->leaf) {
-                            for (std::size_t i = 0; i <= cur->count; ++i) {
-                                left->children[left->count + i] = cur->children[i];
-                            }
-                        }
-                        left->count += cur->count;
-                        
-                        for (std::size_t i = pos - 1; i < parent->count - 1; ++i) {
-                            parent->keys[i] = parent->keys[i + 1];
-                        }
-                        // Revisar el <=, puede que esté mal
-                        for (std::size_t i = pos; i <= parent->count; ++i) {
-                            parent->children[i] = parent->children[i + 1];
-                        }
-                        parent->count--;
-
-                        delete cur;
-                        cur = parent;
-                    } else if (right) {
-                        // Caso 2.2: Merge con right
-                        std::cout << "CASO 2.2" << std::endl;
-                        // Primero traemos el padre al current.
-                        cur->keys[cur->count] = parent->keys[pos];
-                        cur->count++;
-
-                        // Luego copiamos todo right al current.
-                        for (std::size_t i = 0; i < right->count; ++i) {
-                            cur->keys[cur->count + i] = right->keys[i];
-                        }
-                        if (!cur->leaf) {
-                            for (std::size_t i = 0; i <= right->count; ++i) {
-                                cur->children[cur->count + i] = right->children[i];
-                            }
-                        }
-                        cur->count += right->count;
-
-                        // Finalmente se actualiza el padre realizando el desplazamiento correspondiente
-                        // Aqui falta revisar bien estos dos for loops
-                        for (std::size_t i = pos; i < parent->count - 1; ++i) {
-                            parent->keys[i] = parent->keys[i + 1];
-                        }
-                        for (std::size_t i = pos + 1; i <= parent->count; ++i) {
-                            parent->children[i] = parent->children[i + 1];
-                        }
-                        parent->count--;
-
-                        delete right;
-                        cur = parent;
-                    }
-                }
-
-                return;
-            }
-            
-            st.push(cur);
-            cur = cur->children[idx];
-        }
-
-        // Si llega a este punto es que el nodo a eliminar no se encuentra en el arbol
+        if (was_deleted)
+            --n;
     }
 
     [[nodiscard]] std::ptrdiff_t height() const {
